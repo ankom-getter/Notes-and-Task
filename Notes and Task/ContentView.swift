@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreData
 
 struct ContentView: View {
     @State var edit = false
@@ -29,7 +30,10 @@ struct ContentView: View {
                     }.padding([.leading,.trailing], 15)
                     .padding(.top, 10)
                     
-                    Button(action: {self.show.toggle()}){
+                    Button(action: {
+                            
+                            
+                            self.show.toggle()}){
                         Image(systemName: "plus").resizable().frame(width: 25, height: 25).padding()
                         
                     }.foregroundColor(.white)
@@ -43,16 +47,18 @@ struct ContentView: View {
                     VStack(spacing: 10){
                         
                         ForEach(self.obs.datas){i in
-                            cellview(edit: self.edit, data: self.selected).onTapGesture {
+                            cellview(edit: self.edit, data: i).onLongPressGesture {
                                 self.selected = i
+                                self.show.toggle()
                             }
                         }
                         
-                    }
+                    }.padding()
+                     .padding(.top, 15)
                 }
                 
             }.sheet(isPresented: $show){
-                SaveView(show: self.$show)
+                SaveView(show: self.$show, data: self.selected).environmentObject(self.obs)
             }
             
         }
@@ -76,11 +82,17 @@ struct Rounded : Shape {
 struct cellview : View {
     var edit : Bool
     var data : type
+    @EnvironmentObject var obs: observer
+    
     
     var body : some View{
         HStack{
             if edit{
                 Button(action: {
+                    
+                    if self.data.id != ""{
+                        self.obs.delete(id: self.data.id)
+                    }
                     
                 }){
                     Image(systemName: "minus.circle")
@@ -91,14 +103,17 @@ struct cellview : View {
             Text(data.title).lineLimit(1)
             Spacer()
             
-            VStack(spacing : 5){
+            VStack(alignment: .leading, spacing : 5){
                 
                 Text(data.day)
                 Text(data.time)
 
             }
             
-        }
+        }.padding()
+         .background(RoundedRectangle(cornerRadius: 25).fill(Color.white))
+        .animation(.spring())
+        
     }
     
 }
@@ -108,6 +123,9 @@ struct SaveView : View {
     @State var msg = ""
     @State var title = ""
     @Binding var show : Bool
+    @EnvironmentObject var obs :observer
+    var data : type
+    
 
     
     var body: some View{
@@ -116,6 +134,13 @@ struct SaveView : View {
             HStack{
                 Spacer()
                 Button(action: {
+                    
+                    if self.data.id != ""{
+                        self.obs.update(id: self.data.id, msg: self.msg, title: self.title)
+                    }
+                    else{
+                        self.obs.add(title: self.title, msg: self.msg, date: Date())
+                    }
                     self.show.toggle()
                 }) {
                     Text("Save")
@@ -125,6 +150,10 @@ struct SaveView : View {
             Divider()
             multiline(txt: $msg)
         }.padding()
+        .onAppear{
+            self.msg = self.data.msg
+            self.title = self.data.title
+        }
     }
 }
 
@@ -145,6 +174,7 @@ struct multiline : UIViewRepresentable{
         
     }
     func updateUIView(_ uiView: UITextView, context: UIViewRepresentableContext<multiline>) {
+        uiView.text = txt
     }
     
     class Coordinator : NSObject, UITextViewDelegate{
@@ -175,6 +205,106 @@ struct multiline : UIViewRepresentable{
 class observer: ObservableObject{
     @Published var datas = [type]()
     
+    init() {
+        let app = UIApplication.shared.delegate as! AppDelegate
+        let context = app.persistentContainer.viewContext
+        let req = NSFetchRequest<NSFetchRequestResult>(entityName: "Notes_and_Task")
+        
+        do {
+            let res = try context.fetch(req)
+            for i in res as! [NSManagedObject] {
+                let msg = i.value(forKey: "msg") as! String
+                let title = i.value(forKey: "title") as! String
+                let time = i.value(forKey: "time") as! String
+                let day = i.value(forKey: "day") as! String
+                let id = i.value(forKey: "id") as! String
+                
+                self.datas.append(type(id: id, title: title, msg: msg, time: time, day: day))
+            }
+        } catch  {
+            print(error.localizedDescription)
+        }
+    }
     
+    func add(title : String, msg: String, date: Date){
+        
+        let format = DateFormatter()
+        format.dateFormat = "dd/MM/YY"
+        let day = format.string(from: date)
+        format.dateFormat = "hh:mm a"
+        let time = format.string(from: date)
+        
+        
+        
+        let app = UIApplication.shared.delegate as! AppDelegate
+        let context = app.persistentContainer.viewContext
+        let entity = NSEntityDescription.insertNewObject(forEntityName: "Notes_and_Task", into: context)
+        entity.setValue(msg, forKey: "msg")
+        entity.setValue(title, forKey: "title")
+        entity.setValue("\(date.timeIntervalSince1970)", forKey: "id")
+        entity.setValue(time, forKey: "time")
+        entity.setValue(day, forKey: "day")
+        
+        do{
+            
+            try context.save()
+            self.datas.append(type(id: "\(date.timeIntervalSince1970)", title: title, msg: msg, time: time, day: day))
+                }
+        catch{
+            print(error.localizedDescription)
+        }
+    }
+    
+    func delete (id : String){
+        let app = UIApplication.shared.delegate as! AppDelegate
+        let context = app.persistentContainer.viewContext
+        let req = NSFetchRequest<NSFetchRequestResult>(entityName: "Notes_and_Task")
+        do{
+            let res = try context.fetch(req)
+            for i in res as! [NSManagedObject]{
+            if  i.value(forKey: "id") as! String == id{
+            context.delete(i)
+            try context.save()
+                for i in 0..<datas.count{
+                    if datas[i].id == id {
+                        datas.remove(at: i)
+                        return
+                    }
+                }
+            }
+        }
+    }
+        catch  {
+            print(error.localizedDescription)
+        }
+    }
+    
+    func update (id : String, msg: String, title: String){
+        let app = UIApplication.shared.delegate as! AppDelegate
+        let context = app.persistentContainer.viewContext
+        let req = NSFetchRequest<NSFetchRequestResult>(entityName: "Notes_and_Task")
+        do{
+            let res = try context.fetch(req)
+            for i in res as! [NSManagedObject]{
+            if  i.value(forKey: "id") as! String == id{
+                
+                i.setValue(msg, forKey: "msg")
+                i.setValue(title, forKey: "title")
+
+                try context.save()
+                
+                for i in 0..<datas.count{
+                    if datas[i].id == id {
+                        datas[i].msg = msg
+                        datas[i].title = title
+                    }
+                }
+            }
+        }
+    }
+        catch  {
+            print(error.localizedDescription)
+        }
+    }
 }
 
