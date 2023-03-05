@@ -1,8 +1,5 @@
 //
 //  ContentView.swift
-//  Notes and Task
-//
-//  Created by Ruslan Voinarovskyi on 25.08.2021.
 //
 
 import SwiftUI
@@ -32,7 +29,7 @@ struct ContentView: View {
                     
                     Button(action: {
                             
-                            
+                            self.selected = type(id: "", title: "", msg: "", time: "", day: "")
                             self.show.toggle()}){
                         Image(systemName: "plus").resizable().frame(width: 25, height: 25).padding()
                         
@@ -50,12 +47,12 @@ struct ContentView: View {
                             cellview(edit: self.edit, data: i).onLongPressGesture {
                                 self.selected = i
                                 self.show.toggle()
-                            }
+                            }.environmentObject(self.obs)
                         }
                         
                     }.padding()
-                     .padding(.top, 15)
-                }
+                     
+                }.padding(.top, 30)
                 
             }.sheet(isPresented: $show){
                 SaveView(show: self.$show, data: self.selected).environmentObject(self.obs)
